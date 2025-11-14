@@ -1,0 +1,151 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply box-border;
+  }
+
+  body {
+    @apply bg-bg-tertiary text-text-primary font-sans;
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html, body, #app {
+    @apply h-full;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-bg-primary;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-text-tertiary rounded;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-text-secondary;
+  }
+}
+
+@layer components {
+  /* Button styles */
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply bg-accent-primary text-bg-primary hover:bg-accent-hover;
+  }
+
+  .btn-buy {
+    @apply bg-buy text-white hover:bg-buy-hover;
+  }
+
+  .btn-sell {
+    @apply bg-sell text-white hover:bg-sell-hover;
+  }
+
+  .btn-secondary {
+    @apply bg-bg-secondary text-text-primary border border-border-primary hover:bg-bg-primary;
+  }
+
+  /* Input styles */
+  .input-field {
+    @apply w-full px-3 py-2 bg-bg-primary border border-border-primary rounded-lg
+           text-text-primary placeholder-text-tertiary
+           focus:outline-none focus:border-accent-primary transition-colors;
+  }
+
+  /* Card styles */
+  .card {
+    @apply bg-bg-primary border border-border-primary rounded-lg;
+  }
+
+  /* Tab styles */
+  .tab {
+    @apply px-4 py-2 text-text-secondary cursor-pointer transition-colors hover:text-text-primary;
+  }
+
+  .tab-active {
+    @apply text-text-primary border-b-2 border-accent-primary;
+  }
+
+  /* Price colors */
+  .price-up {
+    @apply text-buy;
+  }
+
+  .price-down {
+    @apply text-sell;
+  }
+
+  /* Monospace numbers */
+  .mono-number {
+    @apply font-mono tabular-nums;
+  }
+
+  /* Ellipsis */
+  .ellipsis {
+    @apply overflow-hidden text-ellipsis whitespace-nowrap;
+  }
+
+  /* Grid layout */
+  .grid-trading {
+    @apply grid gap-2;
+    grid-template-areas:
+      "nav nav nav"
+      "info info info"
+      "chart chart orderbook"
+      "chart chart tradeform"
+      "positions positions positions";
+    grid-template-columns: 1fr 1fr 320px;
+    grid-template-rows: auto auto 1fr auto auto;
+  }
+
+  @media (max-width: 1280px) {
+    .grid-trading {
+      grid-template-areas:
+        "nav nav"
+        "info info"
+        "chart orderbook"
+        "chart tradeform"
+        "positions positions";
+      grid-template-columns: 1fr 320px;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .grid-trading {
+      grid-template-areas:
+        "nav"
+        "info"
+        "chart"
+        "orderbook"
+        "tradeform"
+        "positions";
+      grid-template-columns: 1fr;
+    }
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
