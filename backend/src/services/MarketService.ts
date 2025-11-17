@@ -2,6 +2,8 @@ import { TradingPairModel } from '../models/TradingPair'
 import { query, queryOne } from '../config/database'
 import { TradingPair, Ticker, OrderBook, Trade, Kline, OrderBookLevel } from '../types'
 import { createError } from '../utils/response'
+import { HyperliquidService } from './HyperliquidService'
+import logger from '../utils/logger'
 
 /**
  * Market Service - Business logic for market data
@@ -27,30 +29,53 @@ export class MarketService {
 
   /**
    * Get ticker for a symbol
+   * Fetches real-time data from Hyperliquid
    */
   static async getTicker(symbol: string): Promise<Ticker> {
-    // Verify symbol exists
-    await this.getTradingPair(symbol)
+    try {
+      // Extract coin from symbol (BTC-PERP -> BTC, BTC/USDC -> BTC)
+      const coin = HyperliquidService.symbolToCoin(symbol)
 
-    const row = await queryOne<any>(
-      'SELECT * FROM tickers WHERE symbol = ?',
-      [symbol]
-    )
+      // Fetch real-time data from Hyperliquid
+      const tickerData = await HyperliquidService.getTicker(coin)
 
-    if (!row) {
-      throw createError.marketNotFound(symbol)
-    }
+      return {
+        symbol,
+        lastPrice: tickerData.lastPrice,
+        change24h: tickerData.priceChange24h,
+        high24h: tickerData.high24h,
+        low24h: tickerData.low24h,
+        volume24h: tickerData.volume24h,
+        quoteVolume24h: tickerData.volume24h, // Same as volume for now
+        openPrice: (parseFloat(tickerData.lastPrice) - parseFloat(tickerData.priceChange24h)).toFixed(2),
+        timestamp: Date.now(),
+        fundingRate: tickerData.fundingRate,
+        markPrice: tickerData.markPrice,
+      }
+    } catch (error) {
+      logger.warn(`Failed to fetch Hyperliquid ticker for ${symbol}, using fallback`, { error })
 
-    return {
-      symbol: row.symbol,
-      lastPrice: row.last_price.toString(),
-      change24h: row.change_24h.toString(),
-      high24h: row.high_24h.toString(),
-      low24h: row.low_24h.toString(),
-      volume24h: row.volume_24h.toString(),
-      quoteVolume24h: row.quote_volume_24h.toString(),
-      openPrice: row.open_price.toString(),
-      timestamp: new Date(row.updated_at).getTime(),
+      // Fallback to database if Hyperliquid fails
+      const row = await queryOne<any>(
+        'SELECT * FROM tickers WHERE symbol = ?',
+        [symbol]
+      )
+
+      if (!row) {
+        throw createError.marketNotFound(symbol)
+      }
+
+      return {
+        symbol: row.symbol,
+        lastPrice: row.last_price.toString(),
+        change24h: row.change_24h.toString(),
+        high24h: row.high_24h.toString(),
+        low24h: row.low_24h.toString(),
+        volume24h: row.volume_24h.toString(),
+        quoteVolume24h: row.quote_volume_24h.toString(),
+        openPrice: row.open_price.toString(),
+        timestamp: new Date(row.updated_at).getTime(),
+      }
     }
   }
 
@@ -78,50 +103,71 @@ export class MarketService {
    * Fetches real-time data from Hyperliquid
    */
   static async getOrderBook(symbol: string, depth: number = 20): Promise<OrderBook> {
-    // Verify symbol exists
-    await this.getTradingPair(symbol)
+    try {
+      // Extract coin from symbol
+      const coin = HyperliquidService.symbolToCoin(symbol)
 
-    // TODO: Re-enable once Hyperliquid L2 book API is implemented
-    // try {
-    //   const { MarketDataSync } = await import('./MarketDataSync')
-    //   return await MarketDataSync.getRealtimeOrderBook(symbol, depth)
-    // } catch (error) {
-    //   console.warn('Failed to fetch real-time order book, using fallback', error)
-    // }
+      // Fetch real-time order book from Hyperliquid
+      const book = await HyperliquidService.getL2Book(coin)
 
-    // Use fallback mock data for now
-    const ticker = await this.getTicker(symbol)
-    const lastPrice = parseFloat(ticker.lastPrice)
+      // Convert Hyperliquid format to our format
+      const bids: OrderBookLevel[] = (book.levels?.[0] || [])
+        .slice(0, depth)
+        .map((level: any) => ({
+          price: level.px,
+          quantity: level.sz,
+          total: (parseFloat(level.px) * parseFloat(level.sz)).toFixed(4),
+        }))
 
-    // Generate mock bids (buy orders)
-    const bids: OrderBookLevel[] = []
-    for (let i = 0; i < depth; i++) {
-      const price = (lastPrice * (1 - (i + 1) * 0.0001)).toFixed(2)
-      const quantity = (Math.random() * 10 + 0.5).toFixed(4)
-      bids.push({
-        price,
-        quantity,
-        total: (parseFloat(price) * parseFloat(quantity)).toFixed(2),
-      })
-    }
+      const asks: OrderBookLevel[] = (book.levels?.[1] || [])
+        .slice(0, depth)
+        .map((level: any) => ({
+          price: level.px,
+          quantity: level.sz,
+          total: (parseFloat(level.px) * parseFloat(level.sz)).toFixed(4),
+        }))
 
-    // Generate mock asks (sell orders)
-    const asks: OrderBookLevel[] = []
-    for (let i = 0; i < depth; i++) {
-      const price = (lastPrice * (1 + (i + 1) * 0.0001)).toFixed(2)
-      const quantity = (Math.random() * 10 + 0.5).toFixed(4)
-      asks.push({
-        price,
-        quantity,
-        total: (parseFloat(price) * parseFloat(quantity)).toFixed(2),
-      })
-    }
+      return {
+        symbol,
+        bids,
+        asks,
+        timestamp: Date.now(),
+      }
+    } catch (error) {
+      logger.warn(`Failed to fetch Hyperliquid order book for ${symbol}, using fallback`, { error })
 
-    return {
-      symbol,
-      bids,
-      asks,
-      timestamp: Date.now(),
+      // Fallback to mock data
+      const ticker = await this.getTicker(symbol)
+      const lastPrice = parseFloat(ticker.lastPrice)
+
+      const bids: OrderBookLevel[] = []
+      for (let i = 0; i < depth; i++) {
+        const price = (lastPrice * (1 - (i + 1) * 0.0001)).toFixed(2)
+        const quantity = (Math.random() * 10 + 0.5).toFixed(4)
+        bids.push({
+          price,
+          quantity,
+          total: (parseFloat(price) * parseFloat(quantity)).toFixed(2),
+        })
+      }
+
+      const asks: OrderBookLevel[] = []
+      for (let i = 0; i < depth; i++) {
+        const price = (lastPrice * (1 + (i + 1) * 0.0001)).toFixed(2)
+        const quantity = (Math.random() * 10 + 0.5).toFixed(4)
+        asks.push({
+          price,
+          quantity,
+          total: (parseFloat(price) * parseFloat(quantity)).toFixed(2),
+        })
+      }
+
+      return {
+        symbol,
+        bids,
+        asks,
+        timestamp: Date.now(),
+      }
     }
   }
 
@@ -161,48 +207,62 @@ export class MarketService {
     interval: string,
     limit: number = 500
   ): Promise<Kline[]> {
-    // Verify symbol exists
-    await this.getTradingPair(symbol)
+    try {
+      // Extract coin from symbol
+      const coin = HyperliquidService.symbolToCoin(symbol)
 
-    // TODO: Re-enable once Hyperliquid candles API is implemented
-    // try {
-    //   const { MarketDataSync } = await import('./MarketDataSync')
-    //   return await MarketDataSync.getRealtimeKlines(symbol, interval, limit)
-    // } catch (error) {
-    //   console.warn('Failed to fetch real-time klines, using fallback', error)
-    // }
+      // Calculate time range
+      const intervalMs = this.getIntervalMs(interval)
+      const endTime = Date.now()
+      const startTime = endTime - (limit * intervalMs)
 
-    // Use fallback mock data for now
-    const ticker = await this.getTicker(symbol)
-    const basePrice = parseFloat(ticker.lastPrice)
+      // Fetch real-time candles from Hyperliquid
+      const candles = await HyperliquidService.getCandles(coin, interval, startTime, endTime)
 
-    // Generate mock klines
-    const klines: Kline[] = []
-    const intervalMs = this.getIntervalMs(interval)
-    const now = Date.now()
+      // Convert Hyperliquid format to our format
+      return candles.map((candle: any) => ({
+        timestamp: candle.t,
+        open: candle.o.toString(),
+        high: candle.h.toString(),
+        low: candle.l.toString(),
+        close: candle.c.toString(),
+        volume: candle.v.toString(),
+        closeTime: candle.T,
+      }))
+    } catch (error) {
+      logger.warn(`Failed to fetch Hyperliquid klines for ${symbol}, using fallback`, { error })
 
-    for (let i = limit - 1; i >= 0; i--) {
-      const timestamp = now - i * intervalMs
-      const volatility = 0.02 // 2% volatility
+      // Fallback to mock data
+      const ticker = await this.getTicker(symbol)
+      const basePrice = parseFloat(ticker.lastPrice)
 
-      const open = basePrice * (1 + (Math.random() - 0.5) * volatility)
-      const close = basePrice * (1 + (Math.random() - 0.5) * volatility)
-      const high = Math.max(open, close) * (1 + Math.random() * volatility / 2)
-      const low = Math.min(open, close) * (1 - Math.random() * volatility / 2)
-      const volume = (Math.random() * 100 + 10).toFixed(4)
+      const klines: Kline[] = []
+      const intervalMs = this.getIntervalMs(interval)
+      const now = Date.now()
 
-      klines.push({
-        timestamp,
-        open: open.toFixed(2),
-        high: high.toFixed(2),
-        low: low.toFixed(2),
-        close: close.toFixed(2),
-        volume,
-        closeTime: timestamp + intervalMs - 1,
-      })
+      for (let i = limit - 1; i >= 0; i--) {
+        const timestamp = now - i * intervalMs
+        const volatility = 0.02
+
+        const open = basePrice * (1 + (Math.random() - 0.5) * volatility)
+        const close = basePrice * (1 + (Math.random() - 0.5) * volatility)
+        const high = Math.max(open, close) * (1 + Math.random() * volatility / 2)
+        const low = Math.min(open, close) * (1 - Math.random() * volatility / 2)
+        const volume = (Math.random() * 100 + 10).toFixed(4)
+
+        klines.push({
+          timestamp,
+          open: open.toFixed(2),
+          high: high.toFixed(2),
+          low: low.toFixed(2),
+          close: close.toFixed(2),
+          volume,
+          closeTime: timestamp + intervalMs - 1,
+        })
+      }
+
+      return klines
     }
-
-    return klines
   }
 
   /**
@@ -223,36 +283,46 @@ export class MarketService {
 
   /**
    * Get funding rate (for perpetual markets)
+   * Fetches real-time data from Hyperliquid
    */
   static async getFundingRate(symbol: string): Promise<{ symbol: string; rate: string; timestamp: number }> {
-    // Verify it's a perpetual market
-    const pair = await this.getTradingPair(symbol)
-    if (pair.type !== 'PERPETUAL') {
-      throw createError.badRequest('Funding rate is only available for perpetual markets')
-    }
+    try {
+      // Extract coin from symbol
+      const coin = HyperliquidService.symbolToCoin(symbol)
 
-    // Get latest funding rate
-    const row = await queryOne<any>(
-      `SELECT * FROM funding_rates
-       WHERE symbol = ?
-       ORDER BY timestamp DESC
-       LIMIT 1`,
-      [symbol]
-    )
+      // Fetch real-time funding rate from Hyperliquid
+      const fundingData = await HyperliquidService.getFundingRate(coin)
 
-    if (!row) {
-      // Return default 0 funding rate if none exists
       return {
         symbol,
-        rate: '0.0001',
+        rate: fundingData.fundingRate,
         timestamp: Date.now(),
       }
-    }
+    } catch (error) {
+      logger.warn(`Failed to fetch Hyperliquid funding rate for ${symbol}, using fallback`, { error })
 
-    return {
-      symbol: row.symbol,
-      rate: row.rate.toString(),
-      timestamp: new Date(row.timestamp).getTime(),
+      // Fallback to database
+      const row = await queryOne<any>(
+        `SELECT * FROM funding_rates
+         WHERE symbol = ?
+         ORDER BY timestamp DESC
+         LIMIT 1`,
+        [symbol]
+      )
+
+      if (!row) {
+        return {
+          symbol,
+          rate: '0.0001',
+          timestamp: Date.now(),
+        }
+      }
+
+      return {
+        symbol: row.symbol,
+        rate: row.rate.toString(),
+        timestamp: new Date(row.timestamp).getTime(),
+      }
     }
   }
 }

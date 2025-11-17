@@ -41,14 +41,11 @@ export class HyperliquidService {
 
   /**
    * Get order book for a symbol
-   * TODO: Implement once we determine the correct API method
    */
   static async getL2Book(coin: string) {
     try {
-      // Temporarily disabled - need to find correct API method
-      throw new Error('getL2Book not yet implemented')
-      // const book = await this.client.info.perpetuals.getL2Book(coin)
-      // return book
+      const book = await this.client.info.perpetuals.getL2Book(coin)
+      return book
     } catch (error) {
       logger.error('Failed to fetch L2 book', { error, coin })
       throw error
@@ -57,14 +54,17 @@ export class HyperliquidService {
 
   /**
    * Get candlestick data
-   * TODO: Fix arguments - getCandleSnapshot expects 4-5 arguments
+   * Intervals: 1m, 5m, 15m, 1h, 4h, 1d
    */
   static async getCandles(coin: string, interval: string, startTime: number, endTime: number) {
     try {
-      // Temporarily disabled - need to fix arguments
-      throw new Error('getCandles not yet implemented')
-      // const candles = await this.client.info.getCandleSnapshot(...)
-      // return candles
+      const candles = await this.client.info.perpetuals.getCandleSnapshot(
+        coin,
+        interval,
+        startTime,
+        endTime
+      )
+      return candles
     } catch (error) {
       logger.error('Failed to fetch candles', { error, coin, interval })
       throw error
@@ -73,15 +73,86 @@ export class HyperliquidService {
 
   /**
    * Get recent trades
+   * Note: Hyperliquid API doesn't have a public trades endpoint
+   * This returns an empty array for now
    */
   static async getTrades(coin: string, limit: number = 100) {
     try {
-      // Hyperliquid doesn't have a direct trades endpoint
-      // We'll use the user fills endpoint with a public address
-      // Or implement alternative method
+      // Hyperliquid doesn't have a direct public trades endpoint
+      // For now, return empty array
+      // Alternative: could use user fills with a known public address
+      logger.debug(`getTrades called for ${coin}, but not implemented in Hyperliquid API`)
       return []
     } catch (error) {
       logger.error('Failed to fetch trades', { error, coin })
+      throw error
+    }
+  }
+
+  /**
+   * Get all available trading pairs with market data
+   */
+  static async getAllMarkets() {
+    try {
+      const { meta, assetCtxs } = await this.getMetaAndAssetCtxs()
+
+      return meta.universe.map((asset: any, index: number) => {
+        const ctx = assetCtxs[index]
+        return {
+          coin: asset.name,
+          symbol: this.coinToSymbol(asset.name, 'PERPETUAL'),
+          maxLeverage: asset.maxLeverage,
+          markPrice: ctx.markPx,
+          dayNtlVlm: ctx.dayNtlVlm, // 24h volume
+          funding: ctx.funding,
+          openInterest: ctx.openInterest,
+          prevDayPx: ctx.prevDayPx,
+        }
+      })
+    } catch (error) {
+      logger.error('Failed to fetch all markets', { error })
+      throw error
+    }
+  }
+
+  /**
+   * Get ticker data for a specific coin
+   */
+  static async getTicker(coin: string) {
+    try {
+      const { meta, assetCtxs } = await this.getMetaAndAssetCtxs()
+      const assetIndex = meta.universe.findIndex((asset: any) => asset.name === coin)
+
+      if (assetIndex === -1) {
+        throw new Error(`Asset ${coin} not found`)
+      }
+
+      const asset = meta.universe[assetIndex]
+      const ctx = assetCtxs[assetIndex]
+
+      // Calculate 24h price change
+      const currentPrice = parseFloat(ctx.markPx)
+      const prevPrice = parseFloat(ctx.prevDayPx)
+      const priceChange = currentPrice - prevPrice
+      const priceChangePercent = (priceChange / prevPrice) * 100
+
+      return {
+        coin: asset.name,
+        symbol: this.coinToSymbol(asset.name, 'PERPETUAL'),
+        lastPrice: ctx.markPx,
+        markPrice: ctx.markPx,
+        indexPrice: ctx.indexPx || ctx.markPx,
+        priceChange24h: priceChange.toFixed(2),
+        priceChangePercent24h: priceChangePercent.toFixed(2),
+        high24h: ctx.high24h || ctx.markPx,
+        low24h: ctx.low24h || ctx.markPx,
+        volume24h: ctx.dayNtlVlm,
+        fundingRate: ctx.funding,
+        openInterest: ctx.openInterest,
+        maxLeverage: asset.maxLeverage,
+      }
+    } catch (error) {
+      logger.error('Failed to fetch ticker', { error, coin })
       throw error
     }
   }
