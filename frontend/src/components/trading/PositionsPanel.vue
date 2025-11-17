@@ -158,10 +158,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import type { Position, Order } from '@/types/trading'
 import { accountApi, tradingApi } from '@/utils/api'
 import { useAuthStore } from '@/stores/auth'
+import websocketService, { subscribeToUserPositions, subscribeToUserOrders } from '@/services/websocket'
 
 const authStore = useAuthStore()
 
@@ -173,6 +174,7 @@ const orders = ref<Order[]>([])
 const tradeHistory = ref<any[]>([])
 const isLoading = ref(false)
 const errorMessage = ref('')
+const wsConnected = ref(false)
 
 // Load positions
 const loadPositions = async () => {
@@ -211,6 +213,39 @@ const loadTradeHistory = async () => {
     console.error('Failed to load trade history:', error)
     errorMessage.value = 'Failed to load trade history'
   }
+}
+
+// WebSocket handlers
+const handlePositionsUpdate = (data: any) => {
+  if (data.data && data.data.positions) {
+    positions.value = data.data.positions
+    wsConnected.value = true
+    console.log('Positions updated via WebSocket:', data.data.positions.length)
+  }
+}
+
+const handleOrdersUpdate = (data: any) => {
+  if (data.data && data.data.orders) {
+    orders.value = data.data.orders
+    wsConnected.value = true
+    console.log('Orders updated via WebSocket:', data.data.orders.length)
+  }
+}
+
+// Subscribe to WebSocket updates
+const subscribeToUpdates = () => {
+  if (!authStore.isAuthenticated) return
+
+  subscribeToUserPositions(handlePositionsUpdate)
+  subscribeToUserOrders(handleOrdersUpdate)
+  console.log('Subscribed to user positions and orders')
+}
+
+// Unsubscribe from WebSocket updates
+const unsubscribeFromUpdates = () => {
+  websocketService.unsubscribe('user:positions', handlePositionsUpdate)
+  websocketService.unsubscribe('user:orders', handleOrdersUpdate)
+  console.log('Unsubscribed from user positions and orders')
 }
 
 // Close position
@@ -272,26 +307,25 @@ watch(activeTab, (newTab) => {
   }
 }, { immediate: true })
 
-onMounted(() => {
+onMounted(async () => {
   if (authStore.isAuthenticated) {
-    loadPositions()
-    loadOrders()
-  }
+    // Initial HTTP load for fallback
+    await loadPositions()
+    await loadOrders()
 
-  // Auto-refresh every 5 seconds
-  const intervalId = setInterval(() => {
-    if (authStore.isAuthenticated) {
-      if (activeTab.value === 'Positions') {
-        loadPositions()
-      } else if (activeTab.value === 'Orders') {
-        loadOrders()
-      }
+    // Connect to WebSocket
+    try {
+      await websocketService.connect()
+      subscribeToUpdates()
+      console.log('WebSocket connected for PositionsPanel')
+    } catch (error) {
+      console.error('Failed to connect WebSocket:', error)
+      // WebSocket connection failed, HTTP fallback already loaded
     }
-  }, 5000)
-
-  // Cleanup
-  return () => {
-    clearInterval(intervalId)
   }
+})
+
+onUnmounted(() => {
+  unsubscribeFromUpdates()
 })
 </script>

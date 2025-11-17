@@ -110,5 +110,47 @@ function startMockDataBroadcasts(ws: WebSocketService): void {
     })
   }, 1000)
 
+  // Broadcast user positions updates every 3 seconds (mock)
+  setInterval(() => {
+    // In production, this would only broadcast to authenticated users
+    // For now, broadcasting to all subscribers of user:positions channel
+    ws.broadcastToChannel('user:positions', {
+      positions: [
+        {
+          symbol: 'BTC-PERP',
+          side: 'LONG',
+          quantity: '0.5',
+          entryPrice: '49800.00',
+          markPrice: '50000.00',
+          liquidationPrice: '45000.00',
+          leverage: 10,
+          margin: '2490.00',
+          unrealizedPnl: (Math.random() * 200 - 100).toFixed(2),
+          marginRatio: '0.0498',
+        },
+      ],
+    })
+  }, 3000)
+
+  // Broadcast user orders updates every 3 seconds (mock)
+  setInterval(() => {
+    // In production, this would only broadcast to authenticated users
+    ws.broadcastToChannel('user:orders', {
+      orders: [
+        {
+          orderId: 'order_' + Math.random().toString(36).substring(7),
+          symbol: 'ETH-PERP',
+          side: Math.random() > 0.5 ? 'BUY' : 'SELL',
+          type: 'LIMIT',
+          price: '3000.00',
+          quantity: '2.0',
+          filledQuantity: (Math.random() * 2).toFixed(2),
+          status: Math.random() > 0.7 ? 'PARTIALLY_FILLED' : 'OPEN',
+          createdAt: Date.now() - Math.random() * 3600000,
+        },
+      ],
+    })
+  }, 3000)
+
   logger.info('Mock data broadcasts started')
 }
