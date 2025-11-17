@@ -74,9 +74,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import type { OrderBookLevel } from '@/types/market'
 import { marketApi } from '@/utils/api'
+import websocketService, { subscribeToOrderBook } from '@/services/websocket'
 
 const props = defineProps<{
   symbol?: string
@@ -86,9 +87,9 @@ const asks = ref<OrderBookLevel[]>([])
 const bids = ref<OrderBookLevel[]>([])
 const isLoading = ref(false)
 const errorMessage = ref('')
-let refreshInterval: number | null = null
+const wsConnected = ref(false)
 
-// Load order book data
+// Load order book data from HTTP (fallback)
 const loadOrderBook = async () => {
   const symbol = props.symbol || 'BTC/USDC'
   isLoading.value = true
@@ -110,6 +111,29 @@ const loadOrderBook = async () => {
   } finally {
     isLoading.value = false
   }
+}
+
+// WebSocket message handler
+const handleOrderBookUpdate = (data: any) => {
+  if (data.data) {
+    asks.value = data.data.asks || []
+    bids.value = data.data.bids || []
+    wsConnected.value = true
+  }
+}
+
+// Subscribe to WebSocket updates
+const subscribeToUpdates = () => {
+  const symbol = props.symbol || 'BTC/USDC'
+  subscribeToOrderBook(symbol, handleOrderBookUpdate)
+  console.log(`Subscribed to orderbook:${symbol}`)
+}
+
+// Unsubscribe from WebSocket updates
+const unsubscribeFromUpdates = () => {
+  const symbol = props.symbol || 'BTC/USDC'
+  websocketService.unsubscribe(`orderbook:${symbol}`, handleOrderBookUpdate)
+  console.log(`Unsubscribed from orderbook:${symbol}`)
 }
 
 // Generate mock data (fallback)
@@ -175,19 +199,35 @@ const formatAmount = (amount: string) => {
   return parseFloat(amount).toFixed(3)
 }
 
-onMounted(() => {
-  // Initial load
-  loadOrderBook()
+onMounted(async () => {
+  // Initial HTTP load for fallback data
+  await loadOrderBook()
 
-  // Auto-refresh every 2 seconds
-  refreshInterval = window.setInterval(() => {
-    loadOrderBook()
-  }, 2000)
+  // Connect to WebSocket
+  try {
+    await websocketService.connect()
+    subscribeToUpdates()
+    console.log('WebSocket connected for OrderBook')
+  } catch (error) {
+    console.error('Failed to connect WebSocket, using HTTP polling:', error)
+    // Fallback to HTTP polling if WebSocket fails
+    // Note: refreshInterval removed in favor of WebSocket
+  }
 })
 
 onUnmounted(() => {
-  if (refreshInterval) {
-    clearInterval(refreshInterval)
+  unsubscribeFromUpdates()
+})
+
+// Watch for symbol changes
+watch(() => props.symbol, (newSymbol, oldSymbol) => {
+  if (newSymbol && oldSymbol && newSymbol !== oldSymbol) {
+    // Unsubscribe from old symbol
+    websocketService.unsubscribe(`orderbook:${oldSymbol}`, handleOrderBookUpdate)
+    // Subscribe to new symbol
+    subscribeToUpdates()
+    // Also load data via HTTP as fallback
+    loadOrderBook()
   }
 })
 </script>

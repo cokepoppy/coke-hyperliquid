@@ -89,7 +89,9 @@ export class WebSocketService {
    * Handle client messages
    */
   private handleClientMessage(ws: WebSocket, client: Client, message: any): void {
-    const { method, params } = message
+    // Support both 'method' and 'action' for compatibility
+    const method = message.method || message.action
+    const params = message.params || message
 
     switch (method) {
       case 'subscribe':

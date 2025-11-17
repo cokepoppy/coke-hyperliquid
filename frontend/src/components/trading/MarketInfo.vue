@@ -129,9 +129,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import type { TradingPair } from '@/types/market'
 import { marketApi } from '@/utils/api'
+import websocketService, { subscribeToTicker } from '@/services/websocket'
 
 const props = defineProps<{
   symbol?: string
@@ -159,7 +160,7 @@ const errorMessage = ref('')
 const showSymbolMenu = ref(false)
 const searchQuery = ref('')
 const symbolDropdown = ref<HTMLElement>()
-let refreshInterval: number | null = null
+const wsConnected = ref(false)
 
 // Load ticker data for current symbol
 const loadTickerData = async () => {
@@ -187,6 +188,40 @@ const loadTickerData = async () => {
     console.error('Failed to load ticker data:', error)
     errorMessage.value = 'Failed to load ticker data'
   }
+}
+
+// WebSocket ticker update handler
+const handleTickerUpdate = (data: any) => {
+  if (data.data) {
+    const ticker = data.data
+    currentPair.value = {
+      symbol: ticker.symbol,
+      baseAsset: ticker.symbol.split(/[\/-]/)[0],
+      quoteAsset: ticker.symbol.split(/[\/-]/)[1],
+      type: currentPair.value.type, // Keep existing type
+      lastPrice: ticker.lastPrice || '0.00',
+      change24h: ticker.change24h || '0.00',
+      volume24h: ticker.volume24h || '0.00',
+      high24h: ticker.high24h || '0.00',
+      low24h: ticker.low24h || '0.00',
+      marketCap: currentPair.value.marketCap // Keep existing market cap
+    }
+    wsConnected.value = true
+  }
+}
+
+// Subscribe to WebSocket ticker updates
+const subscribeToTickerUpdates = () => {
+  const symbol = props.symbol || 'BTC/USDC'
+  subscribeToTicker(symbol, handleTickerUpdate)
+  console.log(`Subscribed to ticker:${symbol}`)
+}
+
+// Unsubscribe from WebSocket ticker updates
+const unsubscribeFromTickerUpdates = () => {
+  const symbol = props.symbol || 'BTC/USDC'
+  websocketService.unsubscribe(`ticker:${symbol}`, handleTickerUpdate)
+  console.log(`Unsubscribed from ticker:${symbol}`)
 }
 
 // Load all available trading pairs
@@ -319,23 +354,38 @@ const handleClickOutside = (event: MouseEvent) => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   // Initial data load
   loadTradingPairs()
-  loadTickerData()
+  await loadTickerData()
 
-  // Auto-refresh ticker data every 3 seconds
-  refreshInterval = window.setInterval(() => {
-    loadTickerData()
-  }, 3000)
+  // Connect to WebSocket
+  try {
+    await websocketService.connect()
+    subscribeToTickerUpdates()
+    console.log('WebSocket connected for MarketInfo')
+  } catch (error) {
+    console.error('Failed to connect WebSocket:', error)
+    // WebSocket connection failed, HTTP fallback already loaded
+  }
 
   document.addEventListener('click', handleClickOutside)
 })
 
 onUnmounted(() => {
-  if (refreshInterval) {
-    clearInterval(refreshInterval)
-  }
+  unsubscribeFromTickerUpdates()
   document.removeEventListener('click', handleClickOutside)
+})
+
+// Watch for symbol changes
+watch(() => props.symbol, (newSymbol, oldSymbol) => {
+  if (newSymbol && oldSymbol && newSymbol !== oldSymbol) {
+    // Unsubscribe from old symbol
+    websocketService.unsubscribe(`ticker:${oldSymbol}`, handleTickerUpdate)
+    // Subscribe to new symbol
+    subscribeToTickerUpdates()
+    // Also load data via HTTP as fallback
+    loadTickerData()
+  }
 })
 </script>
