@@ -135,13 +135,24 @@
 
     <!-- Submit Button -->
     <div class="p-4 border-t border-border-primary">
+      <!-- Error Message -->
+      <div v-if="errorMessage" class="mb-3 p-2 bg-sell/10 border border-sell/30 rounded text-xs text-sell">
+        {{ errorMessage }}
+      </div>
+
+      <!-- Success Message -->
+      <div v-if="successMessage" class="mb-3 p-2 bg-buy/10 border border-buy/30 rounded text-xs text-buy">
+        {{ successMessage }}
+      </div>
+
       <button
         @click="submitOrder"
         class="w-full py-3 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         :class="side === 'BUY' ? 'btn-buy' : 'btn-sell'"
         :disabled="!canSubmit"
       >
-        {{ side === 'BUY' ? 'Buy' : 'Sell' }} {{ symbol }}
+        <span v-if="!isSubmitting">{{ side === 'BUY' ? 'Buy' : 'Sell' }} {{ symbol }}</span>
+        <span v-else>Submitting...</span>
       </button>
 
       <!-- Balance Info -->
@@ -154,12 +165,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { tradingApi, accountApi } from '@/utils/api'
+import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps<{
   symbol?: string
   isPerpetual?: boolean
 }>()
+
+const authStore = useAuthStore()
 
 const side = ref<'BUY' | 'SELL'>('BUY')
 const orderType = ref<'Limit' | 'Market'>('Limit')
@@ -168,9 +183,30 @@ const amount = ref('')
 const leverage = ref(10)
 const reduceOnly = ref(false)
 const postOnly = ref(false)
+const isSubmitting = ref(false)
+const errorMessage = ref('')
+const successMessage = ref('')
 
 const orderTypes = ['Limit', 'Market']
-const availableBalance = ref('10,000.00')
+const availableBalance = ref('0.00')
+
+// Load available balance
+const loadBalance = async () => {
+  try {
+    const response = await accountApi.getBalance()
+    // response is the full API response: {success, data, timestamp}
+    const assets = Array.isArray(response.data) ? response.data : []
+    const usdcBalance = assets.find((asset: any) => asset.asset === 'USDC')
+    if (usdcBalance) {
+      availableBalance.value = parseFloat(usdcBalance.availableBalance).toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      })
+    }
+  } catch (error) {
+    console.error('Failed to load balance:', error)
+  }
+}
 
 const total = computed(() => {
   if (!price.value || !amount.value) return '0.00'
@@ -180,34 +216,99 @@ const total = computed(() => {
 
 const canSubmit = computed(() => {
   if (orderType.value === 'Market') {
-    return amount.value && parseFloat(amount.value) > 0
+    return amount.value && parseFloat(amount.value) > 0 && !isSubmitting.value
   }
-  return price.value && amount.value && parseFloat(price.value) > 0 && parseFloat(amount.value) > 0
+  return price.value && amount.value && parseFloat(price.value) > 0 && parseFloat(amount.value) > 0 && !isSubmitting.value
 })
 
 const setPercentage = (pct: number) => {
   // Calculate amount based on percentage of available balance
   const balance = parseFloat(availableBalance.value.replace(/,/g, ''))
-  if (price.value && balance > 0) {
-    const maxAmount = (balance * pct / 100) / parseFloat(price.value)
-    amount.value = maxAmount.toFixed(3)
+  if (balance > 0) {
+    if (orderType.value === 'Market' || !price.value) {
+      // For market orders or when no price is set, use a conservative estimate
+      const estimatedPrice = 50000 // TODO: Get current market price
+      const maxAmount = (balance * pct / 100) / estimatedPrice
+      amount.value = maxAmount.toFixed(3)
+    } else {
+      const maxAmount = (balance * pct / 100) / parseFloat(price.value)
+      amount.value = maxAmount.toFixed(3)
+    }
   }
 }
 
-const submitOrder = () => {
+// Simple signature generation (in production, use proper cryptographic signing)
+const generateSignature = async (orderData: any): Promise<string> => {
+  const dataString = JSON.stringify(orderData)
+  const encoder = new TextEncoder()
+  const data = encoder.encode(dataString)
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+  const hashArray = Array.from(new Uint8Array(hashBuffer))
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+  return hashHex
+}
+
+const submitOrder = async () => {
   if (!canSubmit.value) return
 
-  const order = {
-    side: side.value,
-    type: orderType.value,
-    price: orderType.value === 'Limit' ? price.value : null,
-    amount: amount.value,
-    leverage: props.isPerpetual ? leverage.value : null,
-    reduceOnly: reduceOnly.value,
-    postOnly: postOnly.value,
-  }
+  // Clear messages
+  errorMessage.value = ''
+  successMessage.value = ''
+  isSubmitting.value = true
 
-  console.log('Submitting order:', order)
-  // Here you would call the API to submit the order
+  try {
+    const orderData = {
+      symbol: props.symbol || 'BTC/USDC',
+      side: side.value,
+      type: orderType.value.toUpperCase() as 'LIMIT' | 'MARKET',
+      price: orderType.value === 'Limit' ? price.value : undefined,
+      quantity: amount.value,
+      leverage: props.isPerpetual ? leverage.value : undefined,
+      reduceOnly: reduceOnly.value,
+      postOnly: postOnly.value,
+    }
+
+    // Generate signature
+    const signature = await generateSignature(orderData)
+
+    // Submit order
+    const response = await tradingApi.createOrder({
+      ...orderData,
+      signature
+    })
+
+    // Success
+    successMessage.value = 'Order submitted successfully!'
+
+    // Reset form
+    price.value = ''
+    amount.value = ''
+
+    // Reload balance
+    await loadBalance()
+
+    // Clear success message after 3 seconds
+    setTimeout(() => {
+      successMessage.value = ''
+    }, 3000)
+
+  } catch (error: any) {
+    console.error('Failed to submit order:', error)
+    errorMessage.value = error.response?.data?.message || error.message || 'Failed to submit order'
+
+    // Clear error message after 5 seconds
+    setTimeout(() => {
+      errorMessage.value = ''
+    }, 5000)
+  } finally {
+    isSubmitting.value = false
+  }
 }
+
+onMounted(() => {
+  // Load balance when component mounts
+  if (authStore.isAuthenticated) {
+    loadBalance()
+  }
+})
 </script>

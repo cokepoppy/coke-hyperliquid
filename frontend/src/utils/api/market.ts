@@ -9,26 +9,30 @@ export const marketApi = {
 
   // Get ticker for a symbol
   getTicker: (symbol: string) => {
-    return apiClient.get<{ data: Ticker }>(`/market/ticker/${symbol}`)
+    const encodedSymbol = encodeURIComponent(symbol)
+    return apiClient.get<{ data: Ticker }>(`/market/ticker/${encodedSymbol}`)
   },
 
   // Get order book
   getOrderBook: (symbol: string, depth: number = 20) => {
-    return apiClient.get<{ data: OrderBook }>(`/market/orderbook/${symbol}`, {
+    const encodedSymbol = encodeURIComponent(symbol)
+    return apiClient.get<{ data: OrderBook }>(`/market/orderbook/${encodedSymbol}`, {
       params: { depth }
     })
   },
 
   // Get recent trades
   getRecentTrades: (symbol: string, limit: number = 50) => {
-    return apiClient.get<{ data: Trade[] }>(`/market/trades/${symbol}`, {
+    const encodedSymbol = encodeURIComponent(symbol)
+    return apiClient.get<{ data: Trade[] }>(`/market/trades/${encodedSymbol}`, {
       params: { limit }
     })
   },
 
   // Get klines
   getKlines: (symbol: string, interval: string, limit: number = 500) => {
-    return apiClient.get<{ data: any[] }>(`/market/klines/${symbol}`, {
+    const encodedSymbol = encodeURIComponent(symbol)
+    return apiClient.get<{ data: any[] }>(`/market/klines/${encodedSymbol}`, {
       params: { interval, limit }
     })
   },

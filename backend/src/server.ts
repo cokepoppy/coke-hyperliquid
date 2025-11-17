@@ -3,6 +3,8 @@ import config from './config'
 import logger from './utils/logger'
 import { initDatabase, closeDatabase } from './config/database'
 import { initWebSocket, closeWebSocket } from './websocket'
+import { HyperliquidService } from './services/HyperliquidService'
+import { MarketDataSync } from './services/MarketDataSync'
 
 /**
  * Start the HTTP and WebSocket servers
@@ -11,6 +13,14 @@ const startServer = async (): Promise<void> => {
   try {
     // Initialize database
     await initDatabase()
+
+    // Initialize Hyperliquid client
+    HyperliquidService.initialize()
+    logger.info('Hyperliquid service initialized')
+
+    // Start market data sync
+    await MarketDataSync.start()
+    logger.info('Market data sync started')
 
     // Initialize WebSocket server
     initWebSocket()
@@ -41,6 +51,7 @@ const startServer = async (): Promise<void> => {
     const gracefulShutdown = async (signal: string) => {
       logger.info(`${signal} received, shutting down gracefully`)
       server.close(async () => {
+        MarketDataSync.stop()
         await closeWebSocket()
         await closeDatabase()
         logger.info('All services closed')

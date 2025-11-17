@@ -2,7 +2,10 @@
   <div class="card h-full flex flex-col">
     <!-- Header -->
     <div class="flex items-center justify-between px-4 py-2 border-b border-border-primary">
-      <span class="text-sm font-medium text-text-primary">Order Book</span>
+      <div class="flex items-center gap-2">
+        <span class="text-sm font-medium text-text-primary">Order Book</span>
+        <div v-if="isLoading" class="w-3 h-3 border-2 border-accent-primary border-t-transparent rounded-full animate-spin"></div>
+      </div>
 
       <!-- Precision Selector -->
       <button class="text-xs text-text-secondary hover:text-text-primary transition-colors">
@@ -71,31 +74,60 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { OrderBookLevel } from '@/types/market'
+import { marketApi } from '@/utils/api'
 
-// Mock order book data
-const asks = ref<OrderBookLevel[]>([
-  { price: '50255.50', quantity: '0.125' },
-  { price: '50254.00', quantity: '0.234' },
-  { price: '50253.50', quantity: '0.456' },
-  { price: '50252.00', quantity: '0.789' },
-  { price: '50251.50', quantity: '1.234' },
-  { price: '50250.00', quantity: '0.567' },
-  { price: '50249.50', quantity: '0.890' },
-  { price: '50248.00', quantity: '1.123' },
-])
+const props = defineProps<{
+  symbol?: string
+}>()
 
-const bids = ref<OrderBookLevel[]>([
-  { price: '50245.00', quantity: '0.345' },
-  { price: '50244.50', quantity: '0.678' },
-  { price: '50243.00', quantity: '0.901' },
-  { price: '50242.50', quantity: '1.234' },
-  { price: '50241.00', quantity: '0.567' },
-  { price: '50240.50', quantity: '0.890' },
-  { price: '50239.00', quantity: '1.123' },
-  { price: '50238.50', quantity: '0.456' },
-])
+const asks = ref<OrderBookLevel[]>([])
+const bids = ref<OrderBookLevel[]>([])
+const isLoading = ref(false)
+const errorMessage = ref('')
+let refreshInterval: number | null = null
+
+// Load order book data
+const loadOrderBook = async () => {
+  const symbol = props.symbol || 'BTC/USDC'
+  isLoading.value = true
+  errorMessage.value = ''
+
+  try {
+    const response = await marketApi.getOrderBook(symbol, 20)
+    const orderbook = response.data
+
+    asks.value = orderbook.asks
+    bids.value = orderbook.bids
+  } catch (error: any) {
+    console.error('Failed to load order book:', error)
+    errorMessage.value = 'Failed to load order book'
+
+    // Fallback to mock data
+    asks.value = generateMockAsks()
+    bids.value = generateMockBids()
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// Generate mock data (fallback)
+const generateMockAsks = (): OrderBookLevel[] => {
+  const basePrice = 50250
+  return Array.from({ length: 8 }, (_, i) => ({
+    price: (basePrice + (i + 1) * 0.5).toFixed(2),
+    quantity: (Math.random() * 1 + 0.1).toFixed(3)
+  }))
+}
+
+const generateMockBids = (): OrderBookLevel[] => {
+  const basePrice = 50245
+  return Array.from({ length: 8 }, (_, i) => ({
+    price: (basePrice - i * 0.5).toFixed(2),
+    quantity: (Math.random() * 1 + 0.1).toFixed(3)
+  }))
+}
 
 const spread = computed(() => {
   if (asks.value.length === 0 || bids.value.length === 0) return '0.00'
@@ -142,4 +174,20 @@ const formatPrice = (price: string) => {
 const formatAmount = (amount: string) => {
   return parseFloat(amount).toFixed(3)
 }
+
+onMounted(() => {
+  // Initial load
+  loadOrderBook()
+
+  // Auto-refresh every 2 seconds
+  refreshInterval = window.setInterval(() => {
+    loadOrderBook()
+  }, 2000)
+})
+
+onUnmounted(() => {
+  if (refreshInterval) {
+    clearInterval(refreshInterval)
+  }
+})
 </script>

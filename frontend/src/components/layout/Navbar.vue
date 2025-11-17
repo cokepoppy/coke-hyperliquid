@@ -63,19 +63,31 @@
 
       <!-- Right: Actions -->
       <div class="flex items-center gap-2 md:gap-3">
-        <!-- Deposit Button -->
-        <button class="btn btn-primary text-xs md:text-sm font-medium px-3 md:px-4">
+        <!-- Deposit Button (Only show when authenticated) -->
+        <button
+          v-if="authStore.isAuthenticated"
+          class="btn btn-primary text-xs md:text-sm font-medium px-3 md:px-4"
+        >
           Deposit
         </button>
 
-        <!-- User Menu -->
-        <div class="relative" ref="userDropdown">
+        <!-- Login Button (Only show when not authenticated) -->
+        <router-link
+          v-if="!authStore.isAuthenticated"
+          to="/login"
+          class="btn btn-primary text-xs md:text-sm font-medium px-3 md:px-4"
+        >
+          Login
+        </router-link>
+
+        <!-- User Menu (Always show, but content differs) -->
+        <div v-if="authStore.isAuthenticated" class="relative" ref="userDropdown">
           <button
             @click="showUserMenu = !showUserMenu"
             class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-bg-primary transition-colors"
           >
             <span class="text-sm text-text-primary ellipsis max-w-[120px]">
-              {{ userEmail || 'Connect Wallet' }}
+              {{ userEmail }}
             </span>
             <svg
               width="12"
@@ -94,7 +106,7 @@
             v-show="showUserMenu"
             class="absolute top-full right-0 mt-1 bg-bg-secondary border border-border-primary rounded-lg shadow-xl min-w-[200px] py-1 z-50"
           >
-            <div v-if="userEmail" class="px-4 py-2 border-b border-border-primary">
+            <div class="px-4 py-2 border-b border-border-primary">
               <div class="text-xs text-text-tertiary">Signed in as</div>
               <div class="text-sm text-text-primary ellipsis">{{ userEmail }}</div>
             </div>
@@ -130,10 +142,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
+const router = useRouter()
+const authStore = useAuthStore()
 
 const navItems = [
   { label: 'Trade', path: '/trade' },
@@ -150,16 +165,38 @@ const moreItems = [
   { label: 'Twitter', href: 'https://twitter.com/hyperliquid' },
 ]
 
-const userEmail = ref('user@example.com')
 const showMoreMenu = ref(false)
 const showUserMenu = ref(false)
 const moreDropdown = ref<HTMLElement>()
 const userDropdown = ref<HTMLElement>()
 
+// Get user email from auth store
+const userEmail = computed(() => {
+  if (authStore.user?.email) {
+    return authStore.user.email
+  }
+  if (authStore.user?.name) {
+    return authStore.user.name
+  }
+  if (authStore.isAuthenticated) {
+    return 'User'
+  }
+  return 'Connect Wallet'
+})
+
+// Logout handler
+const handleLogout = () => {
+  if (confirm('Are you sure you want to logout?')) {
+    authStore.logout()
+    showUserMenu.value = false
+    router.push('/login')
+  }
+}
+
 const userActions = [
   { label: 'Account Settings', onClick: () => console.log('Settings') },
   { label: 'API Keys', onClick: () => console.log('API Keys') },
-  { label: 'Disconnect', onClick: () => console.log('Disconnect') },
+  { label: 'Logout', onClick: handleLogout },
 ]
 
 const isActive = (path: string) => {

@@ -131,54 +131,142 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { TradingPair } from '@/types/market'
+import { marketApi } from '@/utils/api'
 
-// Mock data
+const props = defineProps<{
+  symbol?: string
+}>()
+
+const emit = defineEmits<{
+  (e: 'symbolChange', symbol: string): void
+}>()
+
 const currentPair = ref<TradingPair>({
   symbol: 'BTC/USDC',
   baseAsset: 'BTC',
   quoteAsset: 'USDC',
   type: 'SPOT',
-  lastPrice: '50245.32',
-  change24h: '2.45',
-  volume24h: '1234567890.50',
-  high24h: '51200.00',
-  low24h: '49800.00',
-  marketCap: '982345678901.23',
+  lastPrice: '0.00',
+  change24h: '0.00',
+  volume24h: '0.00',
+  high24h: '0.00',
+  low24h: '0.00',
 })
 
-const availablePairs = ref<TradingPair[]>([
-  currentPair.value,
-  {
-    symbol: 'ETH/USDC',
-    baseAsset: 'ETH',
-    quoteAsset: 'USDC',
-    type: 'SPOT',
-    lastPrice: '3024.56',
-    change24h: '1.23',
-    volume24h: '567890123.45',
-    high24h: '3100.00',
-    low24h: '2980.00',
-    marketCap: '363456789012.34',
-  },
-  {
-    symbol: 'BTC-PERP',
-    baseAsset: 'BTC',
-    quoteAsset: 'USDC',
-    type: 'PERPETUAL',
-    lastPrice: '50300.00',
-    change24h: '-0.56',
-    volume24h: '987654321.00',
-    high24h: '51500.00',
-    low24h: '49900.00',
-  },
-])
-
+const availablePairs = ref<TradingPair[]>([])
+const isLoading = ref(false)
+const errorMessage = ref('')
 const showSymbolMenu = ref(false)
 const searchQuery = ref('')
 const symbolDropdown = ref<HTMLElement>()
+let refreshInterval: number | null = null
+
+// Load ticker data for current symbol
+const loadTickerData = async () => {
+  const symbol = props.symbol || 'BTC/USDC'
+
+  try {
+    const response = await marketApi.getTicker(symbol)
+    const ticker = response.data
+
+    if (ticker) {
+      currentPair.value = {
+        symbol: ticker.symbol,
+        baseAsset: ticker.baseAsset,
+        quoteAsset: ticker.quoteAsset,
+        type: ticker.type || 'SPOT',
+        lastPrice: ticker.lastPrice || '0.00',
+        change24h: ticker.priceChange24h || '0.00',
+        volume24h: ticker.volume24h || '0.00',
+        high24h: ticker.high24h || '0.00',
+        low24h: ticker.low24h || '0.00',
+        marketCap: ticker.marketCap
+      }
+    }
+  } catch (error: any) {
+    console.error('Failed to load ticker data:', error)
+    errorMessage.value = 'Failed to load ticker data'
+  }
+}
+
+// Load all available trading pairs
+const loadTradingPairs = async () => {
+  isLoading.value = true
+
+  try {
+    const response = await marketApi.getTradingPairs()
+    const pairs = response.data
+
+    if (pairs && pairs.length > 0) {
+      availablePairs.value = pairs.map((pair: any) => ({
+        symbol: pair.symbol,
+        baseAsset: pair.baseAsset,
+        quoteAsset: pair.quoteAsset,
+        type: pair.type || 'SPOT',
+        lastPrice: pair.lastPrice || '0.00',
+        change24h: pair.priceChange24h || '0.00',
+        volume24h: pair.volume24h || '0.00',
+        high24h: pair.high24h || '0.00',
+        low24h: pair.low24h || '0.00',
+        marketCap: pair.marketCap
+      }))
+    } else {
+      // Fallback to mock data if no pairs available
+      availablePairs.value = generateMockPairs()
+    }
+  } catch (error: any) {
+    console.error('Failed to load trading pairs:', error)
+    errorMessage.value = 'Failed to load trading pairs'
+    // Fallback to mock data
+    availablePairs.value = generateMockPairs()
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// Generate mock data (fallback)
+const generateMockPairs = (): TradingPair[] => {
+  return [
+    {
+      symbol: 'BTC/USDC',
+      baseAsset: 'BTC',
+      quoteAsset: 'USDC',
+      type: 'SPOT',
+      lastPrice: '50245.32',
+      change24h: '2.45',
+      volume24h: '1234567890.50',
+      high24h: '51200.00',
+      low24h: '49800.00',
+      marketCap: '982345678901.23',
+    },
+    {
+      symbol: 'ETH/USDC',
+      baseAsset: 'ETH',
+      quoteAsset: 'USDC',
+      type: 'SPOT',
+      lastPrice: '3024.56',
+      change24h: '1.23',
+      volume24h: '567890123.45',
+      high24h: '3100.00',
+      low24h: '2980.00',
+      marketCap: '363456789012.34',
+    },
+    {
+      symbol: 'BTC-PERP',
+      baseAsset: 'BTC',
+      quoteAsset: 'USDC',
+      type: 'PERPETUAL',
+      lastPrice: '50300.00',
+      change24h: '-0.56',
+      volume24h: '987654321.00',
+      high24h: '51500.00',
+      low24h: '49900.00',
+    },
+  ]
+}
 
 const symbolIcon = computed(() => {
-  return currentPair.value.baseAsset.substring(0, 1)
+  return currentPair.value.baseAsset?.substring(0, 1) || 'B'
 })
 
 const filteredPairs = computed(() => {
@@ -192,6 +280,12 @@ const selectPair = (pair: TradingPair) => {
   currentPair.value = pair
   showSymbolMenu.value = false
   searchQuery.value = ''
+
+  // Emit symbol change event to parent
+  emit('symbolChange', pair.symbol)
+
+  // Load ticker data for newly selected pair
+  loadTickerData()
 }
 
 const formatPrice = (price: string) => {
@@ -226,10 +320,22 @@ const handleClickOutside = (event: MouseEvent) => {
 }
 
 onMounted(() => {
+  // Initial data load
+  loadTradingPairs()
+  loadTickerData()
+
+  // Auto-refresh ticker data every 3 seconds
+  refreshInterval = window.setInterval(() => {
+    loadTickerData()
+  }, 3000)
+
   document.addEventListener('click', handleClickOutside)
 })
 
 onUnmounted(() => {
+  if (refreshInterval) {
+    clearInterval(refreshInterval)
+  }
   document.removeEventListener('click', handleClickOutside)
 })
 </script>

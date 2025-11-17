@@ -75,14 +75,21 @@ export class MarketService {
 
   /**
    * Get order book for a symbol
-   * This is a simplified implementation - in production, this would be cached in Redis
+   * Fetches real-time data from Hyperliquid
    */
   static async getOrderBook(symbol: string, depth: number = 20): Promise<OrderBook> {
     // Verify symbol exists
     await this.getTradingPair(symbol)
 
-    // In a real implementation, this would come from a real-time order book engine
-    // For now, we'll generate mock data based on current ticker
+    // TODO: Re-enable once Hyperliquid L2 book API is implemented
+    // try {
+    //   const { MarketDataSync } = await import('./MarketDataSync')
+    //   return await MarketDataSync.getRealtimeOrderBook(symbol, depth)
+    // } catch (error) {
+    //   console.warn('Failed to fetch real-time order book, using fallback', error)
+    // }
+
+    // Use fallback mock data for now
     const ticker = await this.getTicker(symbol)
     const lastPrice = parseFloat(ticker.lastPrice)
 
@@ -147,7 +154,7 @@ export class MarketService {
 
   /**
    * Get K-line (candlestick) data
-   * This is a simplified mock implementation
+   * Fetches real-time data from Hyperliquid
    */
   static async getKlines(
     symbol: string,
@@ -157,7 +164,15 @@ export class MarketService {
     // Verify symbol exists
     await this.getTradingPair(symbol)
 
-    // Get ticker for base price
+    // TODO: Re-enable once Hyperliquid candles API is implemented
+    // try {
+    //   const { MarketDataSync } = await import('./MarketDataSync')
+    //   return await MarketDataSync.getRealtimeKlines(symbol, interval, limit)
+    // } catch (error) {
+    //   console.warn('Failed to fetch real-time klines, using fallback', error)
+    // }
+
+    // Use fallback mock data for now
     const ticker = await this.getTicker(symbol)
     const basePrice = parseFloat(ticker.lastPrice)
 

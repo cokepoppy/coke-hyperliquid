@@ -59,7 +59,11 @@
                 {{ formatPnl(position.unrealizedPnl) }}
               </td>
               <td class="px-4 py-3 text-right">
-                <button class="px-3 py-1 text-xs rounded btn-secondary">
+                <button
+                  @click="closePosition(position.symbol, position.side)"
+                  :disabled="isLoading"
+                  class="px-3 py-1 text-xs rounded btn-secondary disabled:opacity-50"
+                >
                   Close
                 </button>
               </td>
@@ -154,43 +158,98 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import type { Position, Order } from '@/types/trading'
+import { accountApi, tradingApi } from '@/utils/api'
+import { useAuthStore } from '@/stores/auth'
+
+const authStore = useAuthStore()
 
 const activeTab = ref('Positions')
 const tabs = ['Positions', 'Orders', 'History']
 
-// Mock data
-const positions = ref<Position[]>([
-  {
-    symbol: 'BTC-PERP',
-    side: 'LONG',
-    quantity: '0.5',
-    entryPrice: '49800.00',
-    markPrice: '50245.32',
-    liquidationPrice: '45000.00',
-    leverage: 10,
-    margin: '2490.00',
-    unrealizedPnl: '222.66',
-    realizedPnl: '0.00',
-    marginRatio: '0.05',
-  },
-])
+const positions = ref<Position[]>([])
+const orders = ref<Order[]>([])
+const tradeHistory = ref<any[]>([])
+const isLoading = ref(false)
+const errorMessage = ref('')
 
-const orders = ref<Order[]>([
-  {
-    orderId: 'ORD123456',
-    symbol: 'BTC/USDC',
-    side: 'BUY',
-    type: 'LIMIT',
-    price: '50000.00',
-    quantity: '0.1',
-    filledQuantity: '0.0',
-    status: 'OPEN',
-    createdAt: Date.now() - 60000,
-    updatedAt: Date.now(),
-  },
-])
+// Load positions
+const loadPositions = async () => {
+  if (!authStore.isAuthenticated) return
+
+  try {
+    const response = await accountApi.getPositions()
+    positions.value = response.data
+  } catch (error: any) {
+    console.error('Failed to load positions:', error)
+    errorMessage.value = 'Failed to load positions'
+  }
+}
+
+// Load open orders
+const loadOrders = async () => {
+  if (!authStore.isAuthenticated) return
+
+  try {
+    const response = await tradingApi.getOpenOrders()
+    orders.value = response.data
+  } catch (error: any) {
+    console.error('Failed to load orders:', error)
+    errorMessage.value = 'Failed to load orders'
+  }
+}
+
+// Load trade history
+const loadTradeHistory = async () => {
+  if (!authStore.isAuthenticated) return
+
+  try {
+    const response = await accountApi.getTradeHistory()
+    tradeHistory.value = response.data
+  } catch (error: any) {
+    console.error('Failed to load trade history:', error)
+    errorMessage.value = 'Failed to load trade history'
+  }
+}
+
+// Close position
+const closePosition = async (symbol: string, side: 'LONG' | 'SHORT') => {
+  if (!confirm(`Are you sure you want to close your ${side} position for ${symbol}?`)) {
+    return
+  }
+
+  isLoading.value = true
+  try {
+    await accountApi.closePosition(symbol, side)
+    // Reload positions
+    await loadPositions()
+  } catch (error: any) {
+    console.error('Failed to close position:', error)
+    alert(error.response?.data?.message || 'Failed to close position')
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// Cancel order
+const cancelOrder = async (orderId: string) => {
+  if (!confirm('Are you sure you want to cancel this order?')) {
+    return
+  }
+
+  isLoading.value = true
+  try {
+    await tradingApi.cancelOrder(orderId)
+    // Reload orders
+    await loadOrders()
+  } catch (error: any) {
+    console.error('Failed to cancel order:', error)
+    alert(error.response?.data?.message || 'Failed to cancel order')
+  } finally {
+    isLoading.value = false
+  }
+}
 
 const formatPnl = (pnl: string) => {
   const num = parseFloat(pnl)
@@ -202,8 +261,37 @@ const formatTime = (timestamp: number) => {
   return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
 }
 
-const cancelOrder = (orderId: string) => {
-  console.log('Canceling order:', orderId)
-  // API call to cancel order
-}
+// Watch active tab and load data
+watch(activeTab, (newTab) => {
+  if (newTab === 'Positions') {
+    loadPositions()
+  } else if (newTab === 'Orders') {
+    loadOrders()
+  } else if (newTab === 'History') {
+    loadTradeHistory()
+  }
+}, { immediate: true })
+
+onMounted(() => {
+  if (authStore.isAuthenticated) {
+    loadPositions()
+    loadOrders()
+  }
+
+  // Auto-refresh every 5 seconds
+  const intervalId = setInterval(() => {
+    if (authStore.isAuthenticated) {
+      if (activeTab.value === 'Positions') {
+        loadPositions()
+      } else if (activeTab.value === 'Orders') {
+        loadOrders()
+      }
+    }
+  }, 5000)
+
+  // Cleanup
+  return () => {
+    clearInterval(intervalId)
+  }
+})
 </script>

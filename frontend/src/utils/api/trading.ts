@@ -31,8 +31,8 @@ export const tradingApi = {
 
   // Get open orders
   getOpenOrders: (symbol?: string) => {
-    return apiClient.get<{ data: Order[] }>('/trade/orders', {
-      params: { symbol, status: 'OPEN' }
+    return apiClient.get<{ data: Order[] }>('/trade/orders/open', {
+      params: { symbol }
     })
   },
 
