@@ -1,8 +1,13 @@
 import { WebSocketService } from './services/WebSocketService'
+import { HyperliquidService } from './services/HyperliquidService'
 import config from './config'
 import logger from './utils/logger'
 
 let wsService: WebSocketService | null = null
+let currentPrices: { [key: string]: number } = {
+  'BTC': 98000,
+  'ETH': 3500
+}
 
 /**
  * Initialize WebSocket server
@@ -39,10 +44,30 @@ export const closeWebSocket = async (): Promise<void> => {
 }
 
 /**
+ * Update current prices from Hyperliquid
+ */
+async function updateRealPrices(): Promise<void> {
+  try {
+    const btcTicker = await HyperliquidService.getTicker('BTC-PERP')
+    const ethTicker = await HyperliquidService.getTicker('ETH-PERP')
+
+    currentPrices['BTC'] = parseFloat(btcTicker.lastPrice)
+    currentPrices['ETH'] = parseFloat(ethTicker.lastPrice)
+
+    logger.debug('Updated real prices from Hyperliquid', { currentPrices })
+  } catch (error) {
+    logger.warn('Failed to update real prices from Hyperliquid', { error })
+  }
+}
+
+/**
  * Start broadcasting mock data for demonstration
  * In production, this would be replaced with real market data feeds
  */
 function startMockDataBroadcasts(ws: WebSocketService): void {
+  // Update real prices from Hyperliquid every 10 seconds
+  updateRealPrices() // Initial update
+  setInterval(updateRealPrices, 10000)
   // Broadcast ticker updates every 2 seconds
   setInterval(() => {
     const symbols = ['BTC/USDC', 'ETH/USDC', 'BTC-PERP', 'ETH-PERP']
@@ -69,7 +94,8 @@ function startMockDataBroadcasts(ws: WebSocketService): void {
     const symbols = ['BTC/USDC', 'ETH/USDC', 'BTC-PERP', 'ETH-PERP']
 
     symbols.forEach((symbol) => {
-      const basePrice = symbol.includes('BTC') ? 50000 : 3000
+      const coin = symbol.includes('BTC') ? 'BTC' : 'ETH'
+      const basePrice = currentPrices[coin] || (coin === 'BTC' ? 98000 : 3500)
 
       // Generate mock bids
       const bids = Array.from({ length: 20 }, (_, i) => ({
@@ -96,13 +122,14 @@ function startMockDataBroadcasts(ws: WebSocketService): void {
     const symbols = ['BTC/USDC', 'ETH/USDC', 'BTC-PERP', 'ETH-PERP']
 
     symbols.forEach((symbol) => {
-      const basePrice = symbol.includes('BTC') ? 50000 : 3000
+      const coin = symbol.includes('BTC') ? 'BTC' : 'ETH'
+      const basePrice = currentPrices[coin] || (coin === 'BTC' ? 98000 : 3500)
       const side = Math.random() > 0.5 ? 'BUY' : 'SELL'
 
       ws.broadcastToChannel(`trades:${symbol}`, {
         symbol,
         tradeId: Math.random().toString(36).substring(7),
-        price: (basePrice + (Math.random() - 0.5) * 10).toFixed(2),
+        price: (basePrice + (Math.random() - 0.5) * 100).toFixed(2),
         quantity: (Math.random() * 2).toFixed(4),
         side,
         timestamp: Date.now(),

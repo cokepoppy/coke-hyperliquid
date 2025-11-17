@@ -52,6 +52,8 @@ export interface Ticker {
   quoteVolume24h: string
   openPrice: string
   timestamp: number
+  fundingRate?: string
+  markPrice?: string
 }
 
 export interface OrderBookLevel {

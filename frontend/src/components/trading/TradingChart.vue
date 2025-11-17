@@ -130,10 +130,19 @@ const initTradingView = () => {
       },
     })
 
-    tvWidget.onChartReady(() => {
-      isLoading.value = false
-      window.tvWidget = tvWidget
-    })
+    // Check if onChartReady method exists before calling
+    if (tvWidget && typeof tvWidget.onChartReady === 'function') {
+      tvWidget.onChartReady(() => {
+        isLoading.value = false
+        window.tvWidget = tvWidget
+      })
+    } else {
+      // Fallback: just set loading to false after a delay
+      setTimeout(() => {
+        isLoading.value = false
+        window.tvWidget = tvWidget
+      }, 1000)
+    }
   } catch (error) {
     console.error('TradingView init failed:', error)
     isLoading.value = false

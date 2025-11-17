@@ -31,10 +31,17 @@ export class HyperliquidService {
    */
   static async getMetaAndAssetCtxs() {
     try {
+      if (!this.client) {
+        throw new Error('Hyperliquid client not initialized. Call initialize() first.')
+      }
       const [meta, assetCtxs] = await this.client.info.perpetuals.getMetaAndAssetCtxs()
       return { meta, assetCtxs }
     } catch (error) {
-      logger.error('Failed to fetch meta and asset contexts', { error })
+      logger.error('Failed to fetch meta and asset contexts', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        clientInitialized: !!this.client
+      })
       throw error
     }
   }
@@ -44,7 +51,7 @@ export class HyperliquidService {
    */
   static async getL2Book(coin: string) {
     try {
-      const book = await this.client.info.perpetuals.getL2Book(coin)
+      const book = await this.client.info.getL2Book(coin)
       return book
     } catch (error) {
       logger.error('Failed to fetch L2 book', { error, coin })
@@ -58,7 +65,7 @@ export class HyperliquidService {
    */
   static async getCandles(coin: string, interval: string, startTime: number, endTime: number) {
     try {
-      const candles = await this.client.info.perpetuals.getCandleSnapshot(
+      const candles = await this.client.info.getCandleSnapshot(
         coin,
         interval,
         startTime,
@@ -141,18 +148,22 @@ export class HyperliquidService {
         symbol: this.coinToSymbol(asset.name, 'PERPETUAL'),
         lastPrice: ctx.markPx,
         markPrice: ctx.markPx,
-        indexPrice: ctx.indexPx || ctx.markPx,
+        indexPrice: ctx.oraclePx, // Use oraclePx as index price
         priceChange24h: priceChange.toFixed(2),
         priceChangePercent24h: priceChangePercent.toFixed(2),
-        high24h: ctx.high24h || ctx.markPx,
-        low24h: ctx.low24h || ctx.markPx,
+        high24h: ctx.markPx, // Not available in AssetCtx
+        low24h: ctx.markPx, // Not available in AssetCtx
         volume24h: ctx.dayNtlVlm,
         fundingRate: ctx.funding,
         openInterest: ctx.openInterest,
         maxLeverage: asset.maxLeverage,
       }
     } catch (error) {
-      logger.error('Failed to fetch ticker', { error, coin })
+      logger.error('Failed to fetch ticker', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        coin
+      })
       throw error
     }
   }
@@ -195,10 +206,15 @@ export class HyperliquidService {
 
   /**
    * Map our symbol to Hyperliquid coin name
+   * Hyperliquid uses names like "BTC-PERP", "ETH-PERP", etc.
    */
   static symbolToCoin(symbol: string): string {
-    // BTC/USDC -> BTC
-    // BTC-PERP -> BTC
-    return symbol.replace('/USDC', '').replace('-PERP', '')
+    // BTC/USDC -> BTC-PERP (Hyperliquid only has perpetuals)
+    if (symbol.includes('/USDC')) {
+      const base = symbol.replace('/USDC', '')
+      return `${base}-PERP`
+    }
+    // BTC-PERP -> BTC-PERP (already in correct format)
+    return symbol
   }
 }
