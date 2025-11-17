@@ -16,13 +16,23 @@
       </div>
 
       <!-- Order Book -->
-      <div class="overflow-hidden" style="grid-area: orderbook; max-height: 500px;">
+      <div class="overflow-hidden" style="grid-area: orderbook;">
         <OrderBook />
       </div>
 
+      <!-- Recent Trades -->
+      <div class="overflow-hidden" style="grid-area: trades;">
+        <RecentTrades />
+      </div>
+
       <!-- Trade Form -->
-      <div class="overflow-hidden" style="grid-area: tradeform; max-height: 500px;">
+      <div class="overflow-hidden" style="grid-area: tradeform;">
         <TradeForm symbol="BTC" :is-perpetual="false" />
+      </div>
+
+      <!-- Account Equity -->
+      <div class="overflow-hidden" style="grid-area: account;">
+        <AccountEquity />
       </div>
 
       <!-- Positions Panel -->
@@ -86,8 +96,18 @@
         </div>
 
         <!-- Orderbook Tab -->
-        <div v-show="activeTab === 'orderbook'" class="h-[600px]">
+        <div v-show="activeTab === 'orderbook'" class="h-[500px]">
           <OrderBook />
+        </div>
+
+        <!-- Trades Tab -->
+        <div v-show="activeTab === 'trades'" class="h-[500px]">
+          <RecentTrades />
+        </div>
+
+        <!-- Account Tab -->
+        <div v-show="activeTab === 'account'" class="h-[600px]">
+          <AccountEquity />
         </div>
 
         <!-- Positions Tab -->
@@ -107,6 +127,8 @@ import TradingChart from '@/components/trading/TradingChart.vue'
 import OrderBook from '@/components/trading/OrderBook.vue'
 import TradeForm from '@/components/trading/TradeForm.vue'
 import PositionsPanel from '@/components/trading/PositionsPanel.vue'
+import RecentTrades from '@/components/trading/RecentTrades.vue'
+import AccountEquity from '@/components/trading/AccountEquity.vue'
 
 const activeTab = ref('chart')
 
@@ -114,6 +136,8 @@ const mobileTabs = [
   { id: 'chart', label: 'Chart' },
   { id: 'trade', label: 'Trade' },
   { id: 'orderbook', label: 'Book' },
+  { id: 'trades', label: 'Trades' },
+  { id: 'account', label: 'Account' },
   { id: 'positions', label: 'Positions' },
 ]
 </script>
@@ -122,11 +146,11 @@ const mobileTabs = [
 /* Desktop Layout */
 .trading-grid-desktop {
   grid-template-areas:
-    "chart chart orderbook"
-    "chart chart tradeform"
-    "positions positions positions";
-  grid-template-columns: 1fr 1fr 360px;
-  grid-template-rows: 1fr auto 300px;
+    "chart chart orderbook tradeform"
+    "chart chart trades account"
+    "positions positions positions positions";
+  grid-template-columns: 1fr 1fr 300px 340px;
+  grid-template-rows: 1fr 1fr 280px;
 }
 
 /* Tablet Layout */
