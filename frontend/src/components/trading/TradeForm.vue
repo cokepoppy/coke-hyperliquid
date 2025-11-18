@@ -194,17 +194,31 @@ const availableBalance = ref('0.00')
 const loadBalance = async () => {
   try {
     const response = await accountApi.getBalance()
-    // response is the full API response: {success, data, timestamp}
-    const assets = Array.isArray(response.data) ? response.data : []
-    const usdcBalance = assets.find((asset: any) => asset.asset === 'USDC')
-    if (usdcBalance) {
-      availableBalance.value = parseFloat(usdcBalance.availableBalance).toLocaleString('en-US', {
+    // Backend returns: { totalEquity, availableBalance, usedMargin, unrealizedPnl, assets }
+    const balanceData = response.data
+
+    if (balanceData.assets && Array.isArray(balanceData.assets)) {
+      // Find USDC balance from assets array
+      const usdcAsset = balanceData.assets.find((asset: any) => asset.asset === 'USDC')
+      if (usdcAsset) {
+        availableBalance.value = parseFloat(usdcAsset.free || '0').toLocaleString('en-US', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        })
+      } else {
+        // No USDC balance, show 0
+        availableBalance.value = '0.00'
+      }
+    } else if (balanceData.availableBalance) {
+      // Fallback: use total available balance
+      availableBalance.value = parseFloat(balanceData.availableBalance || '0').toLocaleString('en-US', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
       })
     }
   } catch (error) {
     console.error('Failed to load balance:', error)
+    availableBalance.value = '0.00'
   }
 }
 
@@ -287,6 +301,9 @@ const submitOrder = async () => {
     // Reload balance
     await loadBalance()
 
+    // Emit event to refresh account data globally
+    window.dispatchEvent(new CustomEvent('order-created'))
+
     // Clear success message after 3 seconds
     setTimeout(() => {
       successMessage.value = ''
@@ -294,7 +311,14 @@ const submitOrder = async () => {
 
   } catch (error: any) {
     console.error('Failed to submit order:', error)
-    errorMessage.value = error.response?.data?.message || error.message || 'Failed to submit order'
+
+    // Get error message from response
+    const errorData = error.response?.data
+    errorMessage.value =
+      errorData?.error?.message ||  // API error format
+      errorData?.message ||          // Alternative format
+      error.message ||               // Axios error
+      'Failed to submit order'
 
     // Clear error message after 5 seconds
     setTimeout(() => {

@@ -4,7 +4,9 @@ export interface TradingPair {
   quoteAsset: string
   type: 'PERPETUAL' | 'SPOT'
   lastPrice: string
-  change24h: string
+  change24h: string // Deprecated: use priceChangePercent24h
+  priceChange24h?: string // Absolute price change (e.g., "+410.00")
+  priceChangePercent24h?: string // Percentage change (e.g., "+0.82")
   volume24h: string
   high24h: string
   low24h: string

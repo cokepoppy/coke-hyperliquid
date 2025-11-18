@@ -45,7 +45,9 @@ export interface TradingPair {
 export interface Ticker {
   symbol: string
   lastPrice: string
-  change24h: string
+  change24h: string // Deprecated: use priceChangePercent24h
+  priceChange24h?: string // Absolute price change (e.g., "+410.00")
+  priceChangePercent24h?: string // Percentage change (e.g., "+0.82")
   high24h: string
   low24h: string
   volume24h: string
@@ -54,6 +56,9 @@ export interface Ticker {
   timestamp: number
   fundingRate?: string
   markPrice?: string
+  baseAsset?: string
+  quoteAsset?: string
+  type?: string
 }
 
 export interface OrderBookLevel {

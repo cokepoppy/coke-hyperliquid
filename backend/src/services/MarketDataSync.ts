@@ -8,7 +8,7 @@ import logger from '../utils/logger'
  */
 export class MarketDataSync {
   private static syncInterval: NodeJS.Timeout | null = null
-  private static readonly SYNC_INTERVAL_MS = 5000 // Sync every 5 seconds
+  private static readonly SYNC_INTERVAL_MS = 60000 // Sync every 60 seconds to avoid rate limiting
 
   /**
    * Start syncing market data

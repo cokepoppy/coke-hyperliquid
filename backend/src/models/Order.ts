@@ -60,9 +60,10 @@ export class OrderModel {
     limit: number = 50,
     offset: number = 0
   ): Promise<Order[]> {
+    // Use string interpolation for LIMIT/OFFSET as they don't work with placeholders in MySQL
     const rows = await query<OrderRow[]>(
-      'SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
-      [userId, limit, offset]
+      `SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC LIMIT ${parseInt(String(limit))} OFFSET ${parseInt(String(offset))}`,
+      [userId]
     )
     return rows.map(this.toOrder)
   }

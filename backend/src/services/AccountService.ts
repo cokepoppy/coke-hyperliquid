@@ -169,12 +169,11 @@ export class AccountService {
     asset: string,
     amount: string
   ): Promise<Asset> {
-    // Verify asset exists as a quote asset in trading pairs
-    const pairs = await TradingPairModel.findAll()
-    const validAssets = new Set(pairs.map(p => p.quoteAsset))
+    // List of supported assets for deposit (common stablecoins and fiat)
+    const supportedAssets = ['USDT', 'USDC', 'USD', 'BUSD', 'DAI']
 
-    if (!validAssets.has(asset)) {
-      throw createError.badRequest(`Invalid asset: ${asset}`)
+    if (!supportedAssets.includes(asset.toUpperCase())) {
+      throw createError.badRequest(`Invalid asset: ${asset}. Supported assets: ${supportedAssets.join(', ')}`)
     }
 
     const amountNum = parseFloat(amount)
@@ -182,12 +181,15 @@ export class AccountService {
       throw createError.badRequest('Invalid amount')
     }
 
+    // Normalize asset to uppercase
+    const normalizedAsset = asset.toUpperCase()
+
     // Get or create asset
-    await AssetModel.getOrCreate(userId, asset)
+    await AssetModel.getOrCreate(userId, normalizedAsset)
 
     // Add to free balance
-    await AssetModel.addFree(userId, asset, amount)
+    await AssetModel.addFree(userId, normalizedAsset, amount)
 
-    return await AssetModel.findByUserAndAsset(userId, asset) as Asset
+    return await AssetModel.findByUserAndAsset(userId, normalizedAsset) as Asset
   }
 }

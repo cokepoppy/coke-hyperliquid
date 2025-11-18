@@ -27,7 +27,7 @@
 
       <!-- Trade Form -->
       <div class="overflow-hidden" style="grid-area: tradeform;">
-        <TradeForm symbol="BTC" :is-perpetual="false" />
+        <TradeForm symbol="BTC/USDC" :is-perpetual="false" />
       </div>
 
       <!-- Account Equity -->
@@ -55,7 +55,7 @@
 
       <!-- Trade Form -->
       <div class="overflow-hidden" style="grid-area: tradeform;">
-        <TradeForm symbol="BTC" :is-perpetual="false" />
+        <TradeForm symbol="BTC/USDC" :is-perpetual="false" />
       </div>
 
       <!-- Positions Panel -->

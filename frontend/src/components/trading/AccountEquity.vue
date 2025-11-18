@@ -76,22 +76,45 @@
           <span class="text-xs text-sell font-medium">High Margin Risk</span>
         </div>
       </div>
+
+      <!-- Assets -->
+      <div v-if="assets.length > 0" class="mt-4 pt-3 border-t border-border-primary">
+        <div class="text-xs font-medium text-text-tertiary mb-2">Assets</div>
+        <div class="space-y-2">
+          <div
+            v-for="asset in assets"
+            :key="asset.asset"
+            class="flex justify-between items-center text-sm"
+          >
+            <span class="text-text-secondary">{{ asset.asset }}</span>
+            <span class="mono-number text-text-primary font-medium">
+              {{ formatAssetAmount(asset.free) }}
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Quick Actions -->
     <div class="p-4 border-t border-border-primary space-y-2">
-      <button class="w-full btn-primary py-2 text-sm">
+      <button @click="showDepositModal = true" class="w-full btn-primary py-2 text-sm">
         Deposit
       </button>
       <div class="grid grid-cols-2 gap-2">
-        <button class="btn-secondary py-2 text-sm">
+        <button class="btn-secondary py-2 text-sm" disabled title="Coming soon">
           Transfer
         </button>
-        <button class="btn-secondary py-2 text-sm">
+        <button class="btn-secondary py-2 text-sm" disabled title="Coming soon">
           Withdraw
         </button>
       </div>
     </div>
+
+    <!-- Deposit Modal -->
+    <DepositModal
+      v-model="showDepositModal"
+      @success="handleDepositSuccess"
+    />
   </div>
 </template>
 
@@ -100,6 +123,7 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { accountApi } from '@/utils/api'
 import websocketService, { subscribeToUserPositions } from '@/services/websocket'
+import DepositModal from '@/components/modals/DepositModal.vue'
 
 const authStore = useAuthStore()
 
@@ -121,7 +145,15 @@ const accountData = ref<AccountData>({
   maintenanceMargin: 0,
 })
 
+const assets = ref<Array<{ asset: string; free: string; locked: string }>>([])
 const wsConnected = ref(false)
+const showDepositModal = ref(false)
+
+// Handle deposit success
+const handleDepositSuccess = () => {
+  // Refresh account data after successful deposit
+  loadAccountData()
+}
 
 // Load account data from API
 const loadAccountData = async () => {
@@ -131,33 +163,27 @@ const loadAccountData = async () => {
     const response = await accountApi.getBalance()
     const balance = response.data
 
-    // Get positions to calculate unrealized PnL
-    const positionsResponse = await accountApi.getPositions()
-    const positions = positionsResponse.data
+    // Backend returns: totalEquity, availableBalance, usedMargin, unrealizedPnl
+    const totalEquity = parseFloat(balance.totalEquity || '0')
+    const availableBalance = parseFloat(balance.availableBalance || '0')
+    const usedMargin = parseFloat(balance.usedMargin || '0')
+    const unrealizedPnl = parseFloat(balance.unrealizedPnl || '0')
 
-    // Calculate unrealized PnL
-    const totalPnl = positions.reduce((sum: number, pos: any) => {
-      return sum + parseFloat(pos.unrealizedPnl || '0')
-    }, 0)
-
-    // Calculate margin used
-    const marginUsed = positions.reduce((sum: number, pos: any) => {
-      return sum + parseFloat(pos.margin || '0')
-    }, 0)
-
-    // Calculate total equity
-    const totalEquity = parseFloat(balance.total) + totalPnl
-
-    // Calculate margin ratio (margin used / total equity)
-    const marginRatio = totalEquity > 0 ? marginUsed / totalEquity : 0
+    // Calculate margin ratio (used margin / total equity)
+    const marginRatio = totalEquity > 0 ? usedMargin / totalEquity : 0
 
     accountData.value = {
       totalEquity,
-      availableBalance: parseFloat(balance.available),
-      marginUsed,
-      unrealizedPnl: totalPnl,
+      availableBalance,
+      marginUsed: usedMargin,
+      unrealizedPnl,
       marginRatio,
-      maintenanceMargin: marginUsed * 0.5, // Simplified: 50% of margin used
+      maintenanceMargin: usedMargin * 0.5, // Simplified: 50% of margin used
+    }
+
+    // Load assets list
+    if (balance.assets && Array.isArray(balance.assets)) {
+      assets.value = balance.assets.filter((asset: any) => parseFloat(asset.free || '0') > 0)
     }
   } catch (error) {
     console.error('Failed to load account data:', error)
@@ -195,11 +221,34 @@ const formatNumber = (num: number) => {
   })
 }
 
+// Format asset amount with appropriate decimal places
+const formatAssetAmount = (amount: string) => {
+  const num = parseFloat(amount)
+  if (num === 0) return '0'
+
+  // For small amounts (< 0.01), show more decimals
+  if (num < 0.01) {
+    return num.toFixed(8).replace(/\.?0+$/, '')
+  }
+
+  // For larger amounts, show up to 4 decimals
+  return num.toLocaleString('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 4,
+  })
+}
+
 // Get color class based on margin ratio
 const getMarginRatioColor = (ratio: number) => {
   if (ratio > 0.8) return 'text-sell' // High risk
   if (ratio > 0.5) return 'text-yellow-500' // Medium risk
   return 'text-text-primary' // Safe
+}
+
+// Handle order created event
+const handleOrderCreated = () => {
+  console.log('Order created, refreshing account data')
+  loadAccountData()
 }
 
 onMounted(async () => {
@@ -215,10 +264,14 @@ onMounted(async () => {
     } catch (error) {
       console.error('Failed to connect WebSocket:', error)
     }
+
+    // Listen for order created events
+    window.addEventListener('order-created', handleOrderCreated)
   }
 })
 
 onUnmounted(() => {
   unsubscribeFromUpdates()
+  window.removeEventListener('order-created', handleOrderCreated)
 })
 </script>

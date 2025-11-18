@@ -68,26 +68,41 @@ function startMockDataBroadcasts(ws: WebSocketService): void {
   // Update real prices from Hyperliquid every 10 seconds
   updateRealPrices() // Initial update
   setInterval(updateRealPrices, 10000)
-  // Broadcast ticker updates every 2 seconds
-  setInterval(() => {
+  // Broadcast ticker updates every 5 seconds with real data
+  const broadcastRealTickers = async () => {
     const symbols = ['BTC/USDC', 'ETH/USDC', 'BTC-PERP', 'ETH-PERP']
 
-    symbols.forEach((symbol) => {
-      const basePrice = symbol.includes('BTC') ? 50000 : 3000
-      const change = (Math.random() - 0.5) * 100
+    for (const symbol of symbols) {
+      try {
+        // Get coin name from symbol
+        const coin = HyperliquidService.symbolToCoin(symbol)
 
-      ws.broadcastToChannel(`ticker:${symbol}`, {
-        symbol,
-        lastPrice: (basePrice + change).toFixed(2),
-        change24h: ((Math.random() - 0.5) * 5).toFixed(2),
-        high24h: (basePrice + 500).toFixed(2),
-        low24h: (basePrice - 500).toFixed(2),
-        volume24h: (Math.random() * 10000).toFixed(2),
-        fundingRate: '0.0001',
-        nextFundingTime: Date.now() + 3600000,
-      })
-    })
-  }, 2000)
+        // Fetch real ticker data from Hyperliquid
+        const tickerData = await HyperliquidService.getTicker(coin)
+
+        ws.broadcastToChannel(`ticker:${symbol}`, {
+          symbol,
+          lastPrice: tickerData.lastPrice,
+          priceChange24h: tickerData.priceChange24h,
+          priceChangePercent24h: tickerData.priceChangePercent24h,
+          change24h: tickerData.priceChangePercent24h, // For backward compatibility
+          high24h: tickerData.high24h,
+          low24h: tickerData.low24h,
+          volume24h: tickerData.volume24h,
+          fundingRate: tickerData.fundingRate,
+          markPrice: tickerData.markPrice,
+        })
+      } catch (error) {
+        logger.warn(`Failed to broadcast real ticker for ${symbol}`, { error })
+      }
+    }
+  }
+
+  // Initial broadcast
+  broadcastRealTickers()
+
+  // Broadcast every 30 seconds to avoid rate limiting
+  setInterval(broadcastRealTickers, 30000)
 
   // Broadcast orderbook updates every 1 second
   setInterval(() => {
@@ -159,25 +174,13 @@ function startMockDataBroadcasts(ws: WebSocketService): void {
     })
   }, 3000)
 
-  // Broadcast user orders updates every 3 seconds (mock)
-  setInterval(() => {
-    // In production, this would only broadcast to authenticated users
-    ws.broadcastToChannel('user:orders', {
-      orders: [
-        {
-          orderId: 'order_' + Math.random().toString(36).substring(7),
-          symbol: 'ETH-PERP',
-          side: Math.random() > 0.5 ? 'BUY' : 'SELL',
-          type: 'LIMIT',
-          price: '3000.00',
-          quantity: '2.0',
-          filledQuantity: (Math.random() * 2).toFixed(2),
-          status: Math.random() > 0.7 ? 'PARTIALLY_FILLED' : 'OPEN',
-          createdAt: Date.now() - Math.random() * 3600000,
-        },
-      ],
-    })
-  }, 3000)
+  // User orders updates - disabled mock data
+  // Real orders will be broadcasted when actual trades happen
+  // setInterval(() => {
+  //   ws.broadcastToChannel('user:orders', {
+  //     orders: [/* real user orders */],
+  //   })
+  // }, 3000)
 
   logger.info('Mock data broadcasts started')
 }

@@ -24,7 +24,7 @@ export class AssetModel {
       'SELECT * FROM assets WHERE user_id = ? ORDER BY asset',
       [userId]
     )
-    return rows.map(this.toAsset)
+    return rows.map(row => this.toAsset(row))
   }
 
   /**

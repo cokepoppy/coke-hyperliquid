@@ -42,7 +42,9 @@ export class MarketService {
       return {
         symbol,
         lastPrice: tickerData.lastPrice,
-        change24h: tickerData.priceChange24h,
+        priceChange24h: tickerData.priceChange24h, // Absolute price change
+        priceChangePercent24h: tickerData.priceChangePercent24h, // Percentage change
+        change24h: tickerData.priceChangePercent24h, // Deprecated: use priceChangePercent24h
         high24h: tickerData.high24h,
         low24h: tickerData.low24h,
         volume24h: tickerData.volume24h,

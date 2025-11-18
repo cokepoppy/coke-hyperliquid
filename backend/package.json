@@ -8,7 +8,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src --ext .ts"
+    "lint": "eslint src --ext .ts",
+    "db:init": "ts-node scripts/init-trading-pairs.ts"
   },
   "keywords": [
     "hyperliquid",

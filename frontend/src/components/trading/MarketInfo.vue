@@ -85,10 +85,10 @@
         <!-- 24h Change -->
         <div class="flex flex-col gap-1">
           <div class="text-xs text-text-tertiary">24h Change</div>
-          <div class="text-sm font-medium mono-number" :class="parseFloat(currentPair.change24h) >= 0 ? 'price-up' : 'price-down'">
-            <span>{{ formatChange(currentPair.change24h) }}</span>
-            <span class="ml-1">/</span>
-            <span class="ml-1">{{ formatPercent(currentPair.change24h) }}%</span>
+          <div class="text-sm font-medium mono-number" :class="parseFloat(currentPair.priceChangePercent24h || currentPair.change24h) >= 0 ? 'price-up' : 'price-down'">
+            <span>{{ formatChange(currentPair.priceChange24h || '0') }}</span>
+            <span class="text-text-tertiary mx-1">/</span>
+            <span>{{ formatPercent(currentPair.priceChangePercent24h || currentPair.change24h) }}%</span>
           </div>
         </div>
 
@@ -177,7 +177,9 @@ const loadTickerData = async () => {
         quoteAsset: ticker.quoteAsset,
         type: ticker.type || 'SPOT',
         lastPrice: ticker.lastPrice || '0.00',
-        change24h: ticker.priceChange24h || '0.00',
+        change24h: ticker.priceChangePercent24h || ticker.priceChange24h || '0.00',
+        priceChange24h: ticker.priceChange24h || '0.00',
+        priceChangePercent24h: ticker.priceChangePercent24h || '0.00',
         volume24h: ticker.volume24h || '0.00',
         high24h: ticker.high24h || '0.00',
         low24h: ticker.low24h || '0.00',
@@ -200,7 +202,9 @@ const handleTickerUpdate = (data: any) => {
       quoteAsset: ticker.symbol.split(/[\/-]/)[1],
       type: currentPair.value.type, // Keep existing type
       lastPrice: ticker.lastPrice || '0.00',
-      change24h: ticker.change24h || '0.00',
+      change24h: ticker.priceChangePercent24h || ticker.change24h || '0.00',
+      priceChange24h: ticker.priceChange24h || '0.00',
+      priceChangePercent24h: ticker.priceChangePercent24h || ticker.change24h || '0.00',
       volume24h: ticker.volume24h || '0.00',
       high24h: ticker.high24h || '0.00',
       low24h: ticker.low24h || '0.00',
@@ -239,7 +243,9 @@ const loadTradingPairs = async () => {
         quoteAsset: pair.quoteAsset,
         type: pair.type || 'SPOT',
         lastPrice: pair.lastPrice || '0.00',
-        change24h: pair.priceChange24h || '0.00',
+        change24h: pair.priceChangePercent24h || pair.priceChange24h || '0.00',
+        priceChange24h: pair.priceChange24h || '0.00',
+        priceChangePercent24h: pair.priceChangePercent24h || '0.00',
         volume24h: pair.volume24h || '0.00',
         high24h: pair.high24h || '0.00',
         low24h: pair.low24h || '0.00',
@@ -332,7 +338,8 @@ const formatPrice = (price: string) => {
 
 const formatChange = (change: string) => {
   const num = parseFloat(change)
-  return num >= 0 ? `+${num.toFixed(2)}` : num.toFixed(2)
+  // Format absolute price change
+  return num >= 0 ? `+${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 const formatPercent = (change: string) => {

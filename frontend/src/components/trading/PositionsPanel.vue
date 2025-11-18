@@ -189,12 +189,12 @@ const loadPositions = async () => {
   }
 }
 
-// Load open orders
+// Load all orders (including filled orders)
 const loadOrders = async () => {
   if (!authStore.isAuthenticated) return
 
   try {
-    const response = await tradingApi.getOpenOrders()
+    const response = await tradingApi.getOrderHistory(undefined, 100)
     orders.value = response.data
   } catch (error: any) {
     console.error('Failed to load orders:', error)
@@ -307,6 +307,13 @@ watch(activeTab, (newTab) => {
   }
 }, { immediate: true })
 
+// Handle order created event
+const handleOrderCreated = () => {
+  console.log('Order created, refreshing orders and positions')
+  loadOrders()
+  loadPositions()
+}
+
 onMounted(async () => {
   if (authStore.isAuthenticated) {
     // Initial HTTP load for fallback
@@ -322,10 +329,14 @@ onMounted(async () => {
       console.error('Failed to connect WebSocket:', error)
       // WebSocket connection failed, HTTP fallback already loaded
     }
+
+    // Listen for order created events
+    window.addEventListener('order-created', handleOrderCreated)
   }
 })
 
 onUnmounted(() => {
   unsubscribeFromUpdates()
+  window.removeEventListener('order-created', handleOrderCreated)
 })
 </script>

@@ -6,6 +6,8 @@ import { TradingPairModel } from '../models/TradingPair'
 import { Order, CreateOrderRequest, Position } from '../types'
 import { createError } from '../utils/response'
 import { verifySignature } from '../utils/signature'
+import { OrderExecutionService } from './OrderExecutionService'
+import logger from '../utils/logger'
 
 /**
  * Trading Service - Business logic for trading operations
@@ -42,8 +44,27 @@ export class TradingService {
     await AssetModel.getOrCreate(userId, asset)
 
     try {
+      // Get current balance for debugging
+      const userAsset = await AssetModel.findByUserAndAsset(userId, asset)
+      logger.info('Order balance check', {
+        userId,
+        asset,
+        requiredBalance,
+        availableBalance: userAsset?.free || '0',
+        symbol: request.symbol,
+        side: request.side,
+        price: request.price,
+        quantity: request.quantity
+      })
+
       await AssetModel.lock(userId, asset, requiredBalance)
     } catch (error: any) {
+      logger.error('Failed to lock balance', {
+        userId,
+        asset,
+        requiredBalance,
+        error: error.message
+      })
       throw createError.insufficientBalance(error.message)
     }
 
@@ -64,7 +85,18 @@ export class TradingService {
       signature: request.signature,
     })
 
-    return order
+    // Execute order immediately (for demo purposes)
+    // In production, this would be handled by a separate matching engine
+    try {
+      await OrderExecutionService.executeOrder(order)
+    } catch (error: any) {
+      logger.error('Order execution failed', { orderId, error: error.message })
+      // Order will remain in OPEN or CANCELLED state
+    }
+
+    // Fetch updated order to return latest status
+    const updatedOrder = await OrderModel.findById(orderId)
+    return updatedOrder || order
   }
 
   /**
@@ -230,8 +262,9 @@ export class TradingService {
 
       // Validate tick size
       const tickSize = parseFloat(pair.tickSize)
-      const priceRemainder = price % tickSize
-      if (Math.abs(priceRemainder) > 0.0000001) {
+      // Use rounding to avoid floating point precision issues
+      const roundedPrice = Math.round(price / tickSize) * tickSize
+      if (Math.abs(price - roundedPrice) > 0.0000001) {
         throw createError.invalidOrder(
           `Price must be a multiple of tick size ${tickSize}`
         )

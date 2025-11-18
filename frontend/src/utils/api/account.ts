@@ -35,4 +35,9 @@ export const accountApi = {
       params: { asset, limit }
     })
   },
+
+  // Deposit funds
+  deposit: (data: { asset: string; amount: string }) => {
+    return apiClient.post<{ success: boolean; data: any }>('/account/deposit', data)
+  },
 }

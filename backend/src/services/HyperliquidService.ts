@@ -6,6 +6,8 @@ import logger from '../utils/logger'
  */
 export class HyperliquidService {
   private static client: Hyperliquid
+  private static highLowCache: Map<string, { high: string; low: string; timestamp: number }> = new Map()
+  private static CACHE_TTL = 60 * 60 * 1000 // 1 hour cache for high/low prices
 
   /**
    * Initialize Hyperliquid client
@@ -143,6 +145,42 @@ export class HyperliquidService {
       const priceChange = currentPrice - prevPrice
       const priceChangePercent = (priceChange / prevPrice) * 100
 
+      // Get 24h high/low from cache or candles
+      let high24h = ctx.markPx
+      let low24h = ctx.markPx
+
+      // Check cache first
+      const cached = this.highLowCache.get(coin)
+      const now = Date.now()
+
+      if (cached && (now - cached.timestamp) < this.CACHE_TTL) {
+        // Use cached values
+        high24h = cached.high
+        low24h = cached.low
+      } else {
+        // Fetch from candles API (only if cache expired)
+        try {
+          const endTime = now
+          const startTime = endTime - (24 * 60 * 60 * 1000) // 24 hours ago
+          const candles = await this.getCandles(coin, '1h', startTime, endTime)
+
+          if (candles && candles.length > 0) {
+            // Calculate high/low from hourly candles
+            high24h = Math.max(...candles.map((c: any) => parseFloat(c.h))).toString()
+            low24h = Math.min(...candles.map((c: any) => parseFloat(c.l))).toString()
+
+            // Cache the results
+            this.highLowCache.set(coin, { high: high24h, low: low24h, timestamp: now })
+          }
+        } catch (candleError: any) {
+          // Only log if not a rate limit error
+          if (candleError.code !== 429) {
+            logger.warn(`Failed to fetch candles for ${coin}, using current price for high/low`, { candleError })
+          }
+          // Fallback to current price if candles fail
+        }
+      }
+
       return {
         coin: asset.name,
         symbol: this.coinToSymbol(asset.name, 'PERPETUAL'),
@@ -151,8 +189,8 @@ export class HyperliquidService {
         indexPrice: ctx.oraclePx, // Use oraclePx as index price
         priceChange24h: priceChange.toFixed(2),
         priceChangePercent24h: priceChangePercent.toFixed(2),
-        high24h: ctx.markPx, // Not available in AssetCtx
-        low24h: ctx.markPx, // Not available in AssetCtx
+        high24h,
+        low24h,
         volume24h: ctx.dayNtlVlm,
         fundingRate: ctx.funding,
         openInterest: ctx.openInterest,
